@@ -30,45 +30,59 @@ Author: Semyon Davshits
 |---|---|---|---|
 | A | CoAtNet, 2.5D multiple-instance, per-finding attention | 384 px, 94 windows | public checkpoint, fine-tuned by us |
 | A′ | same, local crop | 224 px | public checkpoint, fine-tuned by us |
-| B | compact ConvNeXt-S 2.5D, flip TTA | as published | public (heliosli) |
+| B | compact 2.5D reader, flip TTA | as published | public (heliosli) |
 | C | ConvNeXt-S, all data | 288 px | public (nartaa) |
-| D | r(2+1)D-18 ×2 + Lateral-OA specialist ×3 | 192 px volumes / 320 px zoom | ours |
+| D | r(2+1)D-18 ×2 + Lateral-OA specialist ×3 | 192 px volumes / 320 px crops | ours |
 
 ![pipeline](img/01_pipeline.png)
 
 ## 3. Input
 
-* Series sorted by physical position, orientation canonicalised, left knees mirrored to right.
-* 140 mm field centred on the knee, 96 slices in five slots: sagittal fat-sat, sagittal, coronal fat-sat, coronal, axial.
+Series are sorted by physical position and resampled into five fixed slots: sagittal fat-sat 26, sagittal 22, coronal fat-sat 18, coronal 12, axial 18 slices (96 in total).
 
-![volume](img/02b_volume.png)
+![volume](img/02_volume.png)
 
-* A window is three neighbouring slices stacked as RGB: 94 windows per study.
-* The Lateral-OA specialist sees a 320 px zoom of the lateral compartment.
+Every slice is cropped to a 140 mm field centred on the knee.
 
-![input](img/02_input.png)
+![field](img/03_field.png)
 
-* One shared backbone embeds every window; each of the 12 findings has its own attention over the windows.
-* Mirror TTA: the mirrored study is scored again and averaged.
+A window is three neighbouring slices stacked as RGB; one window is centred on every slice (94 per study).
 
-![mil](img/02c_mil.png)
+![window](img/04_window.png)
 
-## 4. Labels
+Left knees are mirrored to look like right knees.
+
+![mirror](img/07_mirror.png)
+
+## 4. Readers
+
+Reader A embeds every window with one shared backbone; each of the 12 findings has its own attention over the windows. The mirrored study is scored again and averaged.
+
+![mil](img/05_mil.png)
+
+The Lateral-OA specialist sees 82 mm boxes of the lateral compartment on coronal and lateral sagittal slices, resized to 320 px.
+
+![specialist](img/06_specialist.png)
+
+## 5. Labels
 
 * Reports read by language models into per-finding probabilities, averaged with public report-derived label sets.
 * Synovitis, Lateral OA, Effusion and Contusion re-read by larger models.
+
+![label reading](img/08_label_reading.png)
+
 * Loss weight 0.3 where the report is silent on a finding that radiologists often leave unmentioned, 1.0 otherwise.
 * 3D models: 0.7 × reader-A predictions + 0.3 × report label.
+
+![label target](img/09_label_target.png)
 
 | StudyInstanceUID | ACL … Fracture | ACL__w … Fracture__w | is_gold |
 |---|---|---|---|
 | `1.2.3.example` | 0.08 … 0.06 | 1.0 … 0.3 | False |
 
-![labels](img/03_labels.png)
+## 6. Training
 
-## 5. Training
-
-### 5.1 Fine-tuning and weight soups
+### 6.1 Fine-tuning and weight soups
 
 One epoch from the public checkpoint: low LR, EMA, random windows, random mirror, random crop.
 Final reader A = `0.25 × public checkpoint + 4 × 0.1875 × gold-batch fine-tunes`.
@@ -77,23 +91,26 @@ Final reader A = `0.25 × public checkpoint + 4 × 0.1875 × gold-batch fine-tun
 python src/training/make_soup.py soup.pt public.pt:0.25 ft1.pt:0.1875 ft2.pt:0.1875 ft3.pt:0.1875 ft4.pt:0.1875
 ```
 
-### 5.2 Gold batches
+### 6.2 Gold batches
 
-Each training draw is a gold study with probability *p*; final soups use *p* = 0.50.
+With batch size 2 most batches contain no gold study, so a larger loss weight hardly changes their share; sampling with probability *p* does.
+
+![gold share](img/10_gold_share.png)
 
 ```bash
-python src/training/train_raptor_ft.py --holdout -1 --gold_w 1 --gold_frac 0.50 --epochs 1 \
-       --init public.pt --labels labels.csv --out runs/gf50
+python src/training/train_raptor_ft.py --holdout -1 --gold_w 1 --gold_frac 0.50 --epochs 1        --init public.pt --labels labels.csv --out runs/gf50
 ```
 
-![gold](img/04_gold_batches.png)
+Each point is one submission with the 384 px soup fine-tuned at that gold share; final soups use *p* = 0.50.
 
-### 5.3 Specialists and 3D models
+![gold scores](img/11_gold_scores.png)
 
-* Lateral-OA specialist: reader A trained on Lateral OA and Lateral Meniscus only, 320 px zoom of the lateral compartment, 3 seeds.
+### 6.3 Specialists and 3D models
+
+* Lateral-OA specialist: reader A trained on Lateral OA and Lateral Meniscus only, 3 seeds.
 * 3D model: r(2+1)D-18 over each series slot, attention over slots, 12 epochs on the distilled labels, 2 seeds.
 
-## 6. Ensemble
+## 7. Ensemble
 
 Per finding, every reader is converted to ranks, then:
 
@@ -105,18 +122,20 @@ Per finding, every reader is converted to ranks, then:
 | + D (specialists) | rank share 0.30, Lateral OA only |
 | + C | rank share 0.20, all findings |
 
-![runtime](img/07_runtime.png)
+![runtime](img/15_runtime.png)
 
-## 7. Results
+## 8. Results
 
 | Final submission | Public | Private |
 |---|---|---|
 | A = soup of 4 gold-batch fine-tunes (p = 0.50) | 0.960 | 0.944 |
 | A = soup of 2 gold-batch fine-tunes, A′ + gold-batch fine-tune | 0.960 | 0.944 |
 
-![history](img/06_history.png)
+![history](img/12_history.png)
 
-![public vs private](img/05_public_private.png)
+![public vs private](img/13_public_private.png)
+
+![timeline](img/14_timeline.png)
 
 ## Credits
 
