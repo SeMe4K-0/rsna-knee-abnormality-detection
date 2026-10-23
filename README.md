@@ -15,8 +15,6 @@ Author: Semyon Davshits
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)
 ![timm](https://img.shields.io/badge/timm-CoAtNet%20%7C%20ConvNeXt-FFD21E)
 
-![volume](img/02b_volume.png)
-
 </div>
 
 ## 1. Overview
@@ -28,8 +26,6 @@ Author: Semyon Davshits
 
 ## 2. Architecture
 
-![pipeline](img/01_pipeline.png)
-
 | Reader | Model | Input | Origin |
 |---|---|---|---|
 | A | CoAtNet, 2.5D multiple-instance, per-finding attention | 384 px, 94 windows | public checkpoint, fine-tuned by us |
@@ -38,26 +34,26 @@ Author: Semyon Davshits
 | C | ConvNeXt-S, all data | 288 px | public (nartaa) |
 | D | r(2+1)D-18 ×2 + Lateral-OA specialist ×3 | 192 px volumes / 320 px zoom | ours |
 
-## 3. Input
+![pipeline](img/01_pipeline.png)
 
-![volume](img/02b_volume.png)
+## 3. Input
 
 * Series sorted by physical position, orientation canonicalised, left knees mirrored to right.
 * 140 mm field centred on the knee, 96 slices in five slots: sagittal fat-sat, sagittal, coronal fat-sat, coronal, axial.
 
-![input](img/02_input.png)
+![volume](img/02b_volume.png)
 
 * A window is three neighbouring slices stacked as RGB: 94 windows per study.
 * The Lateral-OA specialist sees a 320 px zoom of the lateral compartment.
 
-![mil](img/02c_mil.png)
+![input](img/02_input.png)
 
 * One shared backbone embeds every window; each of the 12 findings has its own attention over the windows.
 * Mirror TTA: the mirrored study is scored again and averaged.
 
-## 4. Labels
+![mil](img/02c_mil.png)
 
-![labels](img/03_labels.png)
+## 4. Labels
 
 * Reports read by language models into per-finding probabilities, averaged with public report-derived label sets.
 * Synovitis, Lateral OA, Effusion and Contusion re-read by larger models.
@@ -67,6 +63,8 @@ Author: Semyon Davshits
 | StudyInstanceUID | ACL … Fracture | ACL__w … Fracture__w | is_gold |
 |---|---|---|---|
 | `1.2.3.example` | 0.08 … 0.06 | 1.0 … 0.3 | False |
+
+![labels](img/03_labels.png)
 
 ## 5. Training
 
@@ -81,12 +79,14 @@ python src/training/make_soup.py soup.pt public.pt:0.25 ft1.pt:0.1875 ft2.pt:0.1
 
 ### 5.2 Gold batches
 
-![gold](img/04_gold_batches.png)
+Each training draw is a gold study with probability *p*; final soups use *p* = 0.50.
 
 ```bash
 python src/training/train_raptor_ft.py --holdout -1 --gold_w 1 --gold_frac 0.50 --epochs 1 \
        --init public.pt --labels labels.csv --out runs/gf50
 ```
+
+![gold](img/04_gold_batches.png)
 
 ### 5.3 Specialists and 3D models
 
@@ -109,18 +109,18 @@ Per finding, every reader is converted to ranks, then:
 
 ## 7. Results
 
-![history](img/06_history.png)
-
-![public vs private](img/05_public_private.png)
-
 | Final submission | Public | Private |
 |---|---|---|
 | A = soup of 4 gold-batch fine-tunes (p = 0.50) | 0.960 | 0.944 |
 | A = soup of 2 gold-batch fine-tunes, A′ + gold-batch fine-tune | 0.960 | 0.944 |
+
+![history](img/06_history.png)
+
+![public vs private](img/05_public_private.png)
 
 ## Credits
 
 * **nartaa**: public CoAtNet 384/224 checkpoints (readers A, A′), reader C.
 * **heliosli**: reader B, per-finding blend shares, flip TTA.
 * Public report-derived label sets of other participants.
-* Figure 2: knee MRI by Ptrump16, CC BY-SA 4.0, via Wikimedia Commons.
+* MRI in the figures: knee MRI by Ptrump16, CC BY-SA 4.0, via Wikimedia Commons.
