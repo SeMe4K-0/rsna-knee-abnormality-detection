@@ -8,6 +8,8 @@ Kaggle · RSNA Knee Abnormality Detection 2026 · knee MRI, 12 findings, macro R
 
 **220th of 6,425 teams** · private 0.944 · public 0.960
 
+[Kaggle write-up](https://www.kaggle.com/competitions/rsna-knee-abnormality-detection/writeups/220th-place-silver-gold-batch-fine-tuning-on-to)
+
 Author: Semyon Davshits
 
 ![Kaggle](https://img.shields.io/badge/Kaggle-code%20competition-20BEFF?logo=kaggle&logoColor=white)
